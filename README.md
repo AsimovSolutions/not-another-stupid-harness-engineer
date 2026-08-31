@@ -62,6 +62,64 @@ stable yet.
 | [Outcomes](docs/outcomes.md) | What success looks like and how it would be measured |
 | [Repo structure](docs/repo-structure.md) | How this repository is organised and why |
 
+## The plugin
+
+This repository is also a Claude Code plugin. It ships the skill set NASHE works
+through — a rewritten, Claude-Code-only descendant of the `superpowers` skills library
+(MIT, see `LICENSE-upstream`), with the workflow bent to this project's
+rules.
+
+### Install
+
+```bash
+claude plugin marketplace add /path/to/not-another-stupid-harness-engineer
+claude plugin install nashe@nashe
+```
+
+Or, from inside a Claude Code session: `/plugin marketplace add <path>` then
+`/plugin install nashe@nashe`. A `SessionStart` hook injects `using-nashe` into every
+session, so the ground rules are live from the first message.
+
+### Skills
+
+| Skill | Use it when |
+|---|---|
+| `using-nashe` | Injected at session start — how skills get invoked, plus the ground rules |
+| `brainstorming` | Before any creative work: intent, requirements, design, spec document |
+| `writing-plans` | A spec exists and the work needs a task-by-task implementation plan |
+| `starting-a-development-branch` | Before the first code edit: fresh `feat/` branch off an up-to-date main, in a worktree |
+| `test-driven-development` | Implementing any feature or bugfix |
+| `systematic-debugging` | Any bug, test failure, or unexpected behaviour |
+| `executing-plans` | Running a written plan inline, with review checkpoints |
+| `subagent-driven-development` | Running a written plan with a fresh subagent per task |
+| `dispatching-parallel-agents` | Two or more independent tasks with no shared state |
+| `requesting-code-review` / `receiving-code-review` | Before merging; and when handling the feedback |
+| `verification-before-completion` | About to claim something works — evidence before assertions |
+| `finishing-a-development-branch` | Implementation done, tests green: PR, or leave it alone |
+| `writing-skills` | Creating or editing skills |
+
+### House rules baked into the skills
+
+- **Branches.** Work starts with a fetch of the main branch and a `feat/<something>`
+  branch inside a `.worktrees/` worktree. The main checkout is never touched.
+- **Commits.** No `Co-Authored-By`, no "Generated with", no emoji signature, no mention
+  of the tooling anywhere in a commit, branch name, or PR body.
+- **Documents.** Specs go to `docs/specs/`, plans to `docs/plans/`. Whether they are
+  tracked in git is asked once per repository through the selection UI; "keep them
+  local" is enforced through `.git/info/exclude`, so the choice leaves no trace in the
+  repository itself.
+- **Finishing.** Two outcomes only: open a pull request, or leave the branch alone.
+  NASHE never merges into main.
+
+### Tests
+
+```bash
+bash tests/claude-code/test-nashe-policies.sh     # the house rules above
+bash tests/hooks/test-session-start.sh            # context injection
+bash tests/claude-code/test-sdd-workspace.sh      # subagent workspace isolation
+(cd tests/brainstorm-server && npm install && npm test)
+```
+
 ## Scope
 
 NASHE targets Claude Code first. The content — process, gates, templates, criteria —

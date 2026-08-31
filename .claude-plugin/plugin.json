@@ -1,0 +1,20 @@
+{
+  "name": "nashe",
+  "description": "NASHE — skills that verify the task, not just the code: brainstorming, spec and plan writing, TDD, systematic debugging, subagent-driven execution, and branch discipline for Claude Code",
+  "version": "0.1.0",
+  "author": {
+    "name": "Lucas Bacelo",
+    "email": "bacelolucas@gmail.com"
+  },
+  "homepage": "https://github.com/AsimovSolutions/not-another-stupid-harness-engineer",
+  "repository": "https://github.com/AsimovSolutions/not-another-stupid-harness-engineer",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "tdd",
+    "debugging",
+    "verification",
+    "workflows",
+    "best-practices"
+  ]
+}
