@@ -1,0 +1,20 @@
+{
+  "name": "nashe",
+  "description": "NASHE — Not Another Stupid Harness Engineer",
+  "owner": {
+    "name": "Lucas Bacelo",
+    "email": "bacelolucas@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "nashe",
+      "description": "Skills that verify the task, not just the code, for Claude Code",
+      "version": "0.1.0",
+      "source": "./",
+      "author": {
+        "name": "Lucas Bacelo",
+        "email": "bacelolucas@gmail.com"
+      }
+    }
+  ]
+}
