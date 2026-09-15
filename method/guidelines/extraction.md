@@ -15,6 +15,18 @@ Where nothing was found, the entry is `[none detected]` — not an inference, no
 the ecosystem's conventions. "This is a Go service so it probably uses structured logging" is
 exactly the invented requirement the entry gate exists to catch.
 
+## Detecting the profile
+
+Three profiles: `backend`, `frontend`, `unknown`.
+
+`backend` where a backend manifest is present. `frontend` where the manifest depends on a
+frontend framework. Where the repository is empty, or neither signal is there, the profile is
+asked for rather than picked.
+
+The profile is never inferred from the task being discussed. The same repository would then
+classify differently depending on how the conversation opened, which is exactly the
+instability the fixed format exists to remove.
+
 ## Where to look, per section
 
 | Section | Sources |

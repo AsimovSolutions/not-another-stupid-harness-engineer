@@ -60,6 +60,31 @@ if [[ -f "$skill" ]]; then
   fi
 fi
 
+# The promoted org.md is generated the same way a repository document is, and
+# is read the same way. Leaving it unchecked means the one file every
+# repository of an organisation consults is the one nothing validates.
+if [[ -f "$skill" ]]; then
+  if grep -q 'validate-document" .*org\.md' "$skill"; then
+    pass "the skill validates the promoted org.md"
+  else
+    fail "the skill validates the promoted org.md"
+  fi
+fi
+
+# Portable content lives under method/. The profile-detection rule is method,
+# not packaging, so the skill points at it rather than restating it.
+extraction="$REPO_ROOT/method/guidelines/extraction.md"
+if grep -q '^## Detecting the profile$' "$extraction"; then
+  pass "extraction.md states how the profile is detected"
+else
+  fail "extraction.md states how the profile is detected"
+fi
+if [[ -f "$skill" ]] && grep -qi 'where a backend manifest is present' "$skill"; then
+  fail "the skill does not restate the profile-detection rule"
+else
+  pass "the skill does not restate the profile-detection rule"
+fi
+
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "method references: $FAILURES failure(s)"
   exit 1

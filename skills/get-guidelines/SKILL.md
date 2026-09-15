@@ -45,9 +45,10 @@ repository in it.
 
 **2. Determine the profile.**
 
-`backend` where a backend manifest is present, `frontend` where the manifest depends on a
-frontend framework, otherwise ask. Do not infer the profile from the task being discussed —
-the same repository would classify differently depending on how the conversation opened.
+`method/guidelines/extraction.md` states the signals, and what to do when they are absent.
+
+Never infer the profile from the task being discussed — the same repository would classify
+differently depending on how the conversation opened.
 
 **3. Read the repository and fill the skeleton.**
 
@@ -74,6 +75,15 @@ Fix what it reports. Do not edit the checker to accept the document.
 ```
 
 `method/guidelines/promotion.md` states the rule this applies.
+
+The promoted document is checked the same way the repository document was:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/tools/guidelines/validate-document" "<NASHE_HOME>/orgs/<organisation>/org.md"
+```
+
+It is the file every repository of the organisation reads, so it is the last one that should
+go unchecked.
 
 ## Red flags
 
