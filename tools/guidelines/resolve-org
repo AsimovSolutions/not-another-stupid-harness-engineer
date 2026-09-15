@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+#
+# Resolve a repository to exactly one organisation.
+#
+# Usage:
+#   resolve-org --repo <path> [--set <organisation>]
+#
+# Prints `org=<slug>` and `source=stored|signals|set` on success.
+# Prints `status=undecided` with the observed signals and exits 3 when the
+# caller has to ask.
+set -euo pipefail
+
+NASHE_HOME="${NASHE_HOME:-$HOME/.claude/nashe}"
+MAP_FILE="$NASHE_HOME/repos.json"
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+require_tool() {
+  command -v "$1" >/dev/null 2>&1 || die "required tool '$1' is not on PATH"
+}
+
+read_stored() {
+  local path="$1"
+  [[ -f "$MAP_FILE" ]] || return 0
+  jq -r --arg p "$path" '.repositories[$p] // empty' "$MAP_FILE"
+}
+
+write_stored() {
+  local path="$1" org="$2" tmp=""
+  mkdir -p "$NASHE_HOME"
+  [[ -f "$MAP_FILE" ]] || printf '{"repositories":{}}\n' >"$MAP_FILE"
+  tmp="$(mktemp "$NASHE_HOME/.repos.json.XXXXXX")"
+  jq --arg p "$path" --arg o "$org" \
+    '.repositories[$p] = $o' "$MAP_FILE" >"$tmp"
+  mv "$tmp" "$MAP_FILE"
+}
+
+slugify() {
+  local value="$1"
+  value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  printf '%s' "$value" | sed 's/[^a-z0-9-]/-/g'
+}
+
+remote_org() {
+  local repo="$1" url=""
+  url="$(git -C "$repo" remote get-url origin 2>/dev/null || true)"
+  [[ -n "$url" ]] || return 0
+  # git@host:owner/name.git  |  https://host/owner/name(.git)
+  url="${url%.git}"
+  url="${url##*:}"
+  case "$url" in
+    *//*) url="${url#*//}" && url="${url#*/}" ;;
+  esac
+  local owner="${url%%/*}"
+  [[ "$owner" != "$url" ]] || return 0
+  slugify "$owner"
+}
+
+path_org() {
+  local repo="$1" parent=""
+  parent="$(dirname "$(cd "$repo" && pwd)")"
+  [[ "$parent" != "/" && "$parent" != "$HOME" ]] || return 0
+  slugify "$(basename "$parent")"
+}
+
+main() {
+  local repo="" set_org=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        repo="${2:-}"
+        shift 2
+        ;;
+      --set)
+        set_org="${2:-}"
+        shift 2
+        ;;
+      *) die "unknown option: $1" ;;
+    esac
+  done
+
+  [[ -n "$repo" ]] || die "--repo is required"
+  [[ -d "$repo" ]] || die "not a directory: $repo"
+
+  require_tool jq
+
+  if [[ -n "$set_org" ]]; then
+    local slug
+    slug="$(slugify "$set_org")"
+    [[ -n "$slug" ]] || die "--set value is empty after normalisation"
+    write_stored "$repo" "$slug"
+    echo "org=$slug"
+    echo "source=set"
+    return 0
+  fi
+
+  local stored
+  stored="$(read_stored "$repo")"
+  if [[ -n "$stored" ]]; then
+    echo "org=$stored"
+    echo "source=stored"
+    return 0
+  fi
+
+  local from_remote from_path
+  from_remote="$(remote_org "$repo")"
+  from_path="$(path_org "$repo")"
+
+  if [[ -n "$from_remote" && "$from_remote" == "$from_path" ]]; then
+    echo "org=$from_remote"
+    echo "source=signals"
+    return 0
+  fi
+
+  echo "status=undecided"
+  echo "remote_org=$from_remote"
+  echo "path_org=$from_path"
+  return 3
+}
+
+main "$@"
