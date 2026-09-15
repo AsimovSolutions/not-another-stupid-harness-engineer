@@ -6,7 +6,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 TOOL="$REPO_ROOT/tools/guidelines/resolve-org"
 
 FAILURES=0
-TEST_ROOT="$(mktemp -d)"
+# Physical, so the paths the test writes into repos.json match the canonical
+# key the tool derives from them.
+TEST_ROOT="$(cd "$(mktemp -d)" && pwd -P)"
 cleanup() { rm -rf "$TEST_ROOT"; }
 trap cleanup EXIT
 
@@ -125,6 +127,106 @@ assert_remote_org "ssh://git@host:2222/owner/name.git" "owner" \
   "ssh scheme remote with a port yields the owner, not the port"
 assert_remote_org "https://host/owner/name/" "owner" \
   "a trailing slash does not produce an empty or slash-laden slug"
+
+# The stored map is keyed by the canonical physical path of the repository,
+# never by the string the caller happened to type. Misfiling a repository into
+# another organisation is the one failure this tool cannot produce, and keying
+# on `.` produces exactly that for the second repository resolved from its own
+# working directory.
+export NASHE_HOME="$TEST_ROOT/home5"
+mkdir -p "$NASHE_HOME"
+mkdir -p "$TEST_ROOT/canon/acme/checkout" "$TEST_ROOT/canon/globex/billing"
+
+(cd "$TEST_ROOT/canon/acme/checkout" && "$TOOL" --repo . --set acme >/dev/null)
+
+set +e
+output="$(cd "$TEST_ROOT/canon/globex/billing" && "$TOOL" --repo .)"
+status=$?
+set -e
+if [[ "$status" -eq 3 ]]; then
+  pass "a second repository resolved from its own directory is not misfiled"
+else
+  fail "a second repository resolved from its own directory is not misfiled"
+  echo "    expected exit 3, got $status with: $output"
+fi
+assert_contains "$output" "path_org=globex" \
+  "the second repository reports its own path signal"
+
+output="$("$TOOL" --repo "$TEST_ROOT/canon/acme/checkout")"
+assert_contains "$output" "org=acme" \
+  "an absolute path reads back the answer stored through a relative one"
+assert_contains "$output" "source=stored" \
+  "the absolute path reads the same key as the relative one"
+
+output="$("$TOOL" --repo "$TEST_ROOT/canon/acme/checkout/")"
+assert_contains "$output" "source=stored" \
+  "a trailing slash resolves to the same key"
+
+ln -s "$TEST_ROOT/canon/acme/checkout" "$TEST_ROOT/canon/checkout-link"
+output="$("$TOOL" --repo "$TEST_ROOT/canon/checkout-link")"
+assert_contains "$output" "org=acme" \
+  "a symlink resolves to the same key as its target"
+assert_contains "$output" "source=stored" \
+  "a symlink reads the stored answer of its target"
+
+key_count="$(jq -r '.repositories | keys | length' "$NASHE_HOME/repos.json")"
+if [[ "$key_count" -eq 1 ]]; then
+  pass "the map holds one key for one repository, however it was named"
+else
+  fail "the map holds one key for one repository, however it was named"
+  jq -r '.repositories' "$NASHE_HOME/repos.json" | sed 's/^/    /'
+fi
+
+if grep -Fq '"."' "$NASHE_HOME/repos.json"; then
+  fail "no raw relative path is ever used as a key"
+  sed 's/^/    /' "$NASHE_HOME/repos.json"
+else
+  pass "no raw relative path is ever used as a key"
+fi
+
+# Two different directories must never share a key.
+export NASHE_HOME="$TEST_ROOT/home6"
+mkdir -p "$NASHE_HOME"
+(cd "$TEST_ROOT/canon/acme/checkout" && "$TOOL" --repo . --set acme >/dev/null)
+(cd "$TEST_ROOT/canon/globex/billing" && "$TOOL" --repo . --set globex >/dev/null)
+output="$(cd "$TEST_ROOT/canon/acme/checkout" && "$TOOL" --repo .)"
+assert_contains "$output" "org=acme" \
+  "the first repository keeps its own organisation after a second is stored"
+output="$(cd "$TEST_ROOT/canon/globex/billing" && "$TOOL" --repo .)"
+assert_contains "$output" "org=globex" \
+  "the second repository keeps its own organisation"
+
+# A malformed map fails in the tool's own style, and leaves no temp file behind.
+export NASHE_HOME="$TEST_ROOT/home7"
+mkdir -p "$NASHE_HOME"
+printf 'not json at all\n' >"$NASHE_HOME/repos.json"
+set +e
+output="$("$TOOL" --repo "$TEST_ROOT/canon/acme/checkout" 2>&1)"
+status=$?
+set -e
+if [[ "$status" -eq 1 ]]; then
+  pass "a malformed map exits 1"
+else
+  fail "a malformed map exits 1 (got $status)"
+fi
+assert_contains "$output" "error: " "a malformed map fails in the tool's error style"
+if printf '%s' "$output" | grep -q 'jq: parse error'; then
+  fail "a malformed map does not leak jq's own diagnostics"
+  echo "    got: $output"
+else
+  pass "a malformed map does not leak jq's own diagnostics"
+fi
+
+set +e
+"$TOOL" --repo "$TEST_ROOT/canon/acme/checkout" --set acme >/dev/null 2>&1
+set -e
+leftover="$(find "$NASHE_HOME" -maxdepth 1 -name '.repos.json.*' | wc -l | tr -d ' ')"
+if [[ "$leftover" -eq 0 ]]; then
+  pass "no temp file is left behind when writing against a malformed map"
+else
+  fail "no temp file is left behind when writing against a malformed map"
+  find "$NASHE_HOME" -maxdepth 1 -name '.repos.json.*' | sed 's/^/    /'
+fi
 
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "resolve-org: $FAILURES failure(s)"
