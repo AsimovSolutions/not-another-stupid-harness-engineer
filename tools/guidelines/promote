@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+#
+# Recompute an organisation's guidelines document from its repository
+# documents.
+#
+# Usage:
+#   promote --org <organisation>
+#
+# A canonical term observed under the same section in two or more repository
+# documents is promoted. Defaulted entries are never promoted.
+set -euo pipefail
+
+NASHE_HOME="${NASHE_HOME:-$HOME/.claude/nashe}"
+
+# Byte ordering, so the output does not depend on the caller's locale.
+export LC_ALL=C
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+SECTIONS=(
+  "1. Profile"
+  "2. Languages and runtimes"
+  "3. Frameworks and libraries"
+  "4. Architecture and layering"
+  "5. Code patterns and conventions"
+  "6. Data and persistence"
+  "7. External integrations"
+  "8. Testing"
+  "9. Observability"
+  "10. Build, packaging and runtime"
+  "11. Infrastructure"
+  "12. CI/CD and quality gates"
+  "13. Documentation"
+  "14. Security and configuration"
+  "15. Deterministic checks"
+  "16. Open questions"
+)
+
+SUBSECTIONS_8=("8.1 Unit" "8.2 Integration and E2E" "8.3 Mocks and fixtures")
+SUBSECTIONS_9=("9.1 Logging" "9.2 Metrics" "9.3 Tracing")
+
+# Emit `<heading>\t<term>\t<description>\t<repository>` for every observed
+# entry, so the aggregation below works on fields rather than on Markdown.
+extract_entries() {
+  local repos_dir="$1" doc="" name=""
+  for doc in "$repos_dir"/*.md; do
+    [[ -e "$doc" ]] || continue
+    name="$(basename "$doc" .md)"
+    awk -v REPO="$name" '
+      /^#{2,3} / {
+        heading = $0
+        sub(/^#+ /, "", heading)
+        next
+      }
+      /^- / {
+        entry = substr($0, 3)
+        if (entry !~ /\[observed: [^]]+\]$/) next
+        term = entry; sub(/ — .*$/, "", term)
+        desc = entry; sub(/^[^—]* — /, "", desc); sub(/ \[observed:.*$/, "", desc)
+        printf "%s\t%s\t%s\t%s\n", heading, term, desc, REPO
+      }
+    ' "$doc"
+  done
+}
+
+# For one heading, print the promoted entries, or nothing.
+promoted_for() {
+  local heading="$1" entries="$2" total="$3"
+  printf '%s\n' "$entries" | awk -F'\t' -v HEADING="$heading" -v TOTAL="$total" '
+    $1 == HEADING {
+      key = tolower($2)
+      if (!((key SUBSEP $4) in seen_repo)) {
+        seen_repo[key SUBSEP $4] = 1
+        count[key]++
+        repos[key] = (repos[key] == "") ? $4 : repos[key] ", " $4
+      }
+      # Repository files are read in sorted order, so the first description
+      # seen for a term is the alphabetically first repository name.
+      if (!(key in desc)) { desc[key] = $3; term[key] = $2 }
+    }
+    END {
+      n = 0
+      for (key in count) if (count[key] >= 2) keys[++n] = key
+      for (i = 1; i < n; i++) {
+        for (j = i + 1; j <= n; j++) {
+          if (keys[j] < keys[i]) { t = keys[i]; keys[i] = keys[j]; keys[j] = t }
+        }
+      }
+      for (i = 1; i <= n; i++) {
+        key = keys[i]
+        printf "- %s — %s [observed in: %s (%d/%d)]\n",
+          term[key], desc[key], repos[key], count[key], TOTAL
+      }
+    }
+  '
+}
+
+emit_section() {
+  local heading="$1" entries="$2" total="$3" body=""
+  body="$(promoted_for "$heading" "$entries" "$total")"
+  [[ -n "$body" ]] || body="- [none detected]"
+  printf '%s\n' "$body"
+  echo ""
+}
+
+main() {
+  local org=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --org)
+        org="${2:-}"
+        shift 2
+        ;;
+      *) die "unknown option: $1" ;;
+    esac
+  done
+  [[ -n "$org" ]] || die "--org is required"
+
+  local org_dir="$NASHE_HOME/orgs/$org"
+  local repos_dir="$org_dir/repos"
+  [[ -d "$repos_dir" ]] || die "no repository documents for organisation: $org"
+
+  local total
+  total="$(find "$repos_dir" -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')"
+  [[ "$total" -gt 0 ]] || die "no repository documents for organisation: $org"
+
+  local entries
+  entries="$(extract_entries "$repos_dir")"
+
+  local tmp
+  tmp="$(mktemp "$org_dir/.org.md.XXXXXX")"
+  {
+    echo "---"
+    echo "nashe_guidelines_version: 1"
+    echo "scope: organization"
+    echo "organization: $org"
+    echo "---"
+    echo ""
+    echo "# Engineering guidelines — $org"
+    echo ""
+    local section sub
+    for section in "${SECTIONS[@]}"; do
+      echo "## $section"
+      case "$section" in
+        "8. Testing")
+          echo ""
+          for sub in "${SUBSECTIONS_8[@]}"; do
+            echo "### $sub"
+            emit_section "$sub" "$entries" "$total"
+          done
+          ;;
+        "9. Observability")
+          echo ""
+          for sub in "${SUBSECTIONS_9[@]}"; do
+            echo "### $sub"
+            emit_section "$sub" "$entries" "$total"
+          done
+          ;;
+        *)
+          emit_section "$section" "$entries" "$total"
+          ;;
+      esac
+    done
+  } >"$tmp"
+  mv "$tmp" "$org_dir/org.md"
+}
+
+main "$@"
