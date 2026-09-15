@@ -45,10 +45,8 @@ repository in it.
 
 **2. Determine the profile.**
 
-`method/guidelines/extraction.md` states the signals, and what to do when they are absent.
-
-Never infer the profile from the task being discussed — the same repository would classify
-differently depending on how the conversation opened.
+`method/guidelines/extraction.md` states the signals, what to do when they are absent, and why
+the profile is never taken from the task being discussed.
 
 **3. Read the repository and fill the skeleton.**
 

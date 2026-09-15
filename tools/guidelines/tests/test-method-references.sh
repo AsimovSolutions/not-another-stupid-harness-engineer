@@ -84,6 +84,15 @@ if [[ -f "$skill" ]] && grep -qi 'where a backend manifest is present' "$skill";
 else
   pass "the skill does not restate the profile-detection rule"
 fi
+# The rationale is method content too, and it is the half most likely to be
+# copied back into the skill as a reminder. Guard the phrasing, not just the
+# signals: a copy that drifts is worse than no copy, because two files then
+# disagree about the same rule.
+if [[ -f "$skill" ]] && grep -qi 'depending on how the conversation opened' "$skill"; then
+  fail "the skill does not restate why the profile is not taken from the task"
+else
+  pass "the skill does not restate why the profile is not taken from the task"
+fi
 
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "method references: $FAILURES failure(s)"

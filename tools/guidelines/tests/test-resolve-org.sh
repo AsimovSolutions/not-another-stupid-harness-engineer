@@ -184,6 +184,17 @@ else
   pass "no raw relative path is ever used as a key"
 fi
 
+# A caller with CDPATH set must not change which directory is resolved. With a
+# relative argument, `cd` consults CDPATH and jumps elsewhere, printing the path
+# it landed on — which lands in the captured value and files the repository
+# under the wrong organisation.
+export NASHE_HOME="$TEST_ROOT/home-cdpath"
+mkdir -p "$NASHE_HOME"
+mkdir -p "$TEST_ROOT/trap/decoy" "$TEST_ROOT/real/decoy"
+output="$(cd "$TEST_ROOT/real" && CDPATH="$TEST_ROOT/trap" "$TOOL" --repo decoy || true)"
+assert_contains "$output" "path_org=real" \
+  "CDPATH does not redirect a relative repository path"
+
 # Two different directories must never share a key.
 export NASHE_HOME="$TEST_ROOT/home6"
 mkdir -p "$NASHE_HOME"

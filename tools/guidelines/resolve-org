@@ -33,7 +33,15 @@ require_tool() {
 # silently hands one organisation's conventions to another.
 canonical_path() {
   local repo="$1"
-  (cd "$repo" && pwd -P)
+  # Unsetting CDPATH is the part that matters: with it set, `cd` resolves a
+  # relative argument against those directories instead of the current one, so
+  # the wrong repository gets canonicalised. Silencing the path `cd` prints is
+  # not enough — by then the jump has already happened. -P resolves symlinks;
+  # -- stops a leading dash being read as an option.
+  (
+    unset CDPATH
+    cd -P -- "$repo" && pwd -P
+  )
 }
 
 # jq exits non-zero on a malformed map. Report it in this tool's own style

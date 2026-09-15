@@ -40,10 +40,10 @@ should never reveal which harness it is going to run in, and reading a file unde
 │   ├── research/           Source ordering, when to escalate to a human
 │   └── templates/          Task contract, evidence block, escalation formats
 │
-├── skills/                 Claude Code skills — thin wrappers over method/
+├── skills/                 Built: Claude Code skills — thin wrappers over method/
 ├── agents/                 Subagent definitions
 ├── commands/               Slash commands
-├── hooks/                  Enforcement points that make gates non-optional
+├── hooks/                  Built: enforcement points that make gates non-optional
 │
 ├── tools/                  Deterministic checkers and scripts
 │   └── guidelines/         Built: resolve-org, promote, validate-document
