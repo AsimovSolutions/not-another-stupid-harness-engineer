@@ -221,6 +221,44 @@ else
   echo "    got: $missing_middle_output"
 fi
 
+# An empty section is the checker's core claim: a section with nothing to
+# report holds `- [none detected]`, so that two runs are comparable.
+make_document "$TEST_ROOT/empty-section.md" \
+  '/^## 11\. Infrastructure$/,/^## 12\./{/^- \[none detected\]$/d;}'
+assert_invalid "$TEST_ROOT/empty-section.md" "no entries" \
+  "a section with no entry at all is rejected"
+
+make_document "$TEST_ROOT/empty-subsection.md" \
+  '/^### 9\.2 Metrics$/,/^### 9\.3/{/^- \[none detected\]$/d;}'
+assert_invalid "$TEST_ROOT/empty-subsection.md" "no entries" \
+  "a subsection with no entry at all is rejected"
+
+make_document "$TEST_ROOT/no-title.md" '/^# Engineering guidelines/d'
+assert_invalid "$TEST_ROOT/no-title.md" "title" \
+  "a document with no H1 title is rejected"
+
+make_document "$TEST_ROOT/duplicate-term.md" \
+  's/^- Test — `go test \.\/\.\.\.`\. \[observed: Dockerfile:1\]$/- Build — `go vet .\/...`. [observed: Dockerfile:2]/'
+assert_invalid "$TEST_ROOT/duplicate-term.md" "duplicate" \
+  "a canonical term repeated within a section is rejected"
+
+make_document "$TEST_ROOT/double-space-marker.md" \
+  's/binding\. \[observed: go.mod:6\]/binding.  [observed: go.mod:6]/'
+assert_invalid "$TEST_ROOT/double-space-marker.md" "one space" \
+  "two spaces before the marker are rejected"
+
+# Sections 8 and 9 carry subsections. An entry under the parent heading is
+# ambiguous about which subsection owns it, and promote drops it silently.
+make_document "$TEST_ROOT/orphan-8.md" \
+  's/^## 8\. Testing$/&\n- Orphan — sits under the parent heading. [observed: a]/'
+assert_invalid "$TEST_ROOT/orphan-8.md" "subsection" \
+  "an entry directly under section 8 is rejected"
+
+make_document "$TEST_ROOT/orphan-9.md" \
+  's/^## 9\. Observability$/&\n- Orphan — sits under the parent heading. [observed: a]/'
+assert_invalid "$TEST_ROOT/orphan-9.md" "subsection" \
+  "an entry directly under section 9 is rejected"
+
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "validate-document: $FAILURES failure(s)"
   exit 1

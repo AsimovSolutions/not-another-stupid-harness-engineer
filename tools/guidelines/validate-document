@@ -32,11 +32,39 @@ main() {
       split("8.1 Unit|8.2 Integration and E2E|8.3 Mocks and fixtures", sub8, "|")
       split("9.1 Logging|9.2 Metrics|9.3 Tracing", sub9, "|")
       seen = 0; findings = 0; in_front = 0; front_done = 0
+      saw_title = 0
+      cur = ""; cur_line = 0; cur_entries = 0; cur_parent = 0
     }
 
     function report(line, message) {
       printf "%s:%d: %s\n", FILE, line, message > "/dev/stderr"
       findings++
+    }
+
+    # Close the heading being read. A section holds at least one entry — a
+    # section with nothing to report holds `- [none detected]`, and that is
+    # what makes two runs comparable. Sections 8 and 9 are the exception: they
+    # carry subsections, so an entry under the parent heading is ambiguous
+    # about which subsection owns it.
+    function close_heading() {
+      if (cur == "") return
+      if (cur_parent) {
+        if (cur_entries > 0) {
+          report(cur_line, "entries must sit under a subsection, not directly " \
+                 "under \"" cur "\"")
+        }
+      } else if (cur_entries == 0) {
+        report(cur_line, "section has no entries: " cur \
+               " (a section with nothing to report holds - [none detected])")
+      }
+      cur = ""; cur_entries = 0; cur_parent = 0
+    }
+
+    function open_heading(heading, line, parent) {
+      close_heading()
+      cur = heading; cur_line = line; cur_entries = 0; cur_parent = parent
+      delete terms
+      prev_term = ""; had_none = 0; had_entry = 0
     }
 
     NR == 1 {
@@ -61,7 +89,7 @@ main() {
       if (heading != want[seen]) {
         report(NR, "expected section \"" want[seen] "\", found \"" heading "\"")
       }
-      prev_term = ""; had_none = 0; had_entry = 0
+      open_heading(heading, NR, (heading ~ /^(8\. Testing|9\. Observability)$/))
       next
     }
 
@@ -73,13 +101,18 @@ main() {
       if (heading != expect) {
         report(NR, "expected subsection \"" expect "\", found \"" heading "\"")
       }
-      prev_term = ""; had_none = 0; had_entry = 0
+      open_heading(heading, NR, 0)
       next
     }
 
     /^- / {
       if (!front_done) { report(NR, "entry before frontmatter"); next }
       entry = substr($0, 3)
+      cur_entries++
+
+      if (entry ~ /  \[[^]]*\]$/) {
+        report(NR, "the marker takes exactly one space after the description")
+      }
 
       if (entry == "[none detected]") {
         had_none = 1
@@ -134,6 +167,12 @@ main() {
       term = entry
       sub(/ — .*$/, "", term)
       lower = tolower(term)
+      # Equal terms satisfy the ordering comparison below, so duplicates are
+      # rejected here rather than being left to slip through it.
+      if (lower in terms) {
+        report(NR, "duplicate canonical term in this section: " term)
+      }
+      terms[lower] = 1
       if (prev_term != "" && lower < prev_term) {
         report(NR, "entries must be in alphabetical order: \"" term "\" after \"" prev_raw "\"")
       }
@@ -142,7 +181,7 @@ main() {
       next
     }
 
-    /^# / { next }
+    /^# / { saw_title = 1; next }
     /^[[:space:]]*$/ { next }
 
     {
@@ -150,7 +189,9 @@ main() {
     }
 
     END {
+      close_heading()
       if (!front_done) report(1, "frontmatter is not closed")
+      if (!saw_title) report(1, "document must carry a # title")
       if (front["nashe_guidelines_version"] != "1") {
         report(1, "nashe_guidelines_version must be 1")
       }

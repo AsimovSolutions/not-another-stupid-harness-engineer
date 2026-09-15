@@ -23,6 +23,12 @@ profile: backend         # repository scope only: backend | frontend | unknown
 There is no generation timestamp. A date would make two otherwise identical runs differ,
 and the document is generated rather than authored, so its age is not meaningful.
 
+## Title
+
+A single `# ` heading follows the frontmatter, naming what the document covers:
+`# Engineering guidelines — acme/checkout` at repository scope, `# Engineering guidelines —
+acme` at organisation scope. A document read on its own has to say what it is about.
+
 ## Sections
 
 All sixteen headings are present in every document, in this order, whether or not anything
@@ -54,10 +60,15 @@ was found for them. Sections 8 and 9 carry the subsections shown.
 ```
 
 A section with nothing to report holds the single entry `- [none detected]`. It is never
-omitted. Sections that came and went with what was found would give two runs documents with
-different headings, which is the instability this format exists to remove — and the absence
-of a convention is itself worth stating, because it distinguishes "checked, found nothing"
-from "not checked".
+omitted, and it is never left empty. Sections that came and went with what was found would
+give two runs documents with different headings, which is the instability this format exists
+to remove — and the absence of a convention is itself worth stating, because it distinguishes
+"checked, found nothing" from "not checked". A heading with no entry under it says neither.
+
+Sections 8 and 9 carry their entries in their subsections. An entry placed directly under
+`## 8. Testing` or `## 9. Observability` is rejected: it does not say which subsection owns
+it, so promotion has nowhere to put it, and a document whose content silently disappears is
+worse than one that fails.
 
 ## Entries
 
@@ -70,10 +81,14 @@ Every line of body content is a bullet. Four parts:
 
 The canonical term comes first because it is the key promotion compares. The separator is an
 em dash with a single space on each side. The description is one sentence ending in a full
-stop. The marker closes the line.
+stop. The marker closes the line, after exactly one space.
 
 Entries are sorted alphabetically by canonical term, case-insensitively, within their
 section. Sorting by importance is a judgement, and a judgement is not stable between runs.
+
+A canonical term appears at most once per section. The term is the key promotion compares,
+so two entries sharing one would make the section's content depend on which of them a reader
+or a tool happened to take.
 
 No free prose anywhere in the body — not an introduction, not a closing note, not a
 parenthetical between bullets. Prose is where wording drifts between runs, and it is where a
