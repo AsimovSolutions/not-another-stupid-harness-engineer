@@ -1,7 +1,7 @@
 # Repository structure
 
-How this repository is organised, and the reasoning behind it. Nothing below is built
-yet — this is the target layout that the first implementation should grow into.
+How this repository is organised, and the reasoning behind it. The directories marked
+below are built; the rest is the target layout that later work should grow into.
 
 ## The central split
 
@@ -33,6 +33,8 @@ should never reveal which harness it is going to run in, and reading a file unde
 │   └── repo-structure.md   This file
 │
 ├── method/                 Harness-agnostic content — the actual method
+│   ├── guidelines/         Built: document format, extraction, promotion rule
+│   ├── defaults/           Built: per-profile defaults (backend, frontend)
 │   ├── gates/              One file per gate: purpose, inputs, pass/fail mechanism
 │   ├── criteria/           What makes an `expected` valid; evidence taxonomy
 │   ├── research/           Source ordering, when to escalate to a human
@@ -44,7 +46,8 @@ should never reveal which harness it is going to run in, and reading a file unde
 ├── hooks/                  Enforcement points that make gates non-optional
 │
 ├── tools/                  Deterministic checkers and scripts
-│   └── tests/              Tests for those checkers
+│   └── guidelines/         Built: resolve-org, promote, validate-document
+│       └── tests/          Tests for those checkers
 │
 └── .claude-plugin/         Claude Code plugin manifest
 ```
