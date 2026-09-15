@@ -55,7 +55,6 @@ assert_contains "$output" "source=stored" "stored answer reports its source"
 
 # Remote owner and parent directory agree: resolve without asking.
 export NASHE_HOME="$TEST_ROOT/home2"
-mkdir -p "$NASHE_HOME/../work/acme"
 agree_dir="$TEST_ROOT/work/acme"
 mkdir -p "$agree_dir"
 repo2="$agree_dir/payments"
@@ -93,6 +92,39 @@ assert_contains "$output" "source=set" "--set reports its source"
 output="$("$TOOL" --repo "$repo3")"
 assert_contains "$output" "org=acme-corp" "the answer is read back on the next run"
 assert_contains "$output" "source=stored" "the read-back reports the stored source"
+
+# remote_org() must parse by shape, not by stripping to the last colon.
+# A misparsed remote must never produce a confident wrong org: unrecognised
+# or ambiguous forms must yield an empty signal, routing to undecided.
+assert_remote_org() {
+  local url="$1" expected="$2" description="$3"
+  local dir="$TEST_ROOT/remote-org-cases/${#REMOTE_ORG_CASE[@]}"
+  REMOTE_ORG_CASE+=("$url")
+  mkdir -p "$dir"
+  git -C "$dir" init -q
+  git -C "$dir" remote add origin "$url"
+  set +e
+  local out
+  out="$("$TOOL" --repo "$dir")"
+  set -e
+  assert_contains "$out" "remote_org=$expected" "$description"
+}
+REMOTE_ORG_CASE=()
+export NASHE_HOME="$TEST_ROOT/home4"
+mkdir -p "$NASHE_HOME"
+
+assert_remote_org "git@host:owner/name.git" "owner" \
+  "scp-like remote yields the owner"
+assert_remote_org "https://host/owner/name.git" "owner" \
+  "https remote yields the owner"
+assert_remote_org "https://host:8080/owner/name" "owner" \
+  "https remote with a port yields the owner, not the port"
+assert_remote_org "ssh://git@host/owner/name.git" "owner" \
+  "ssh scheme remote yields the owner, not the host"
+assert_remote_org "ssh://git@host:2222/owner/name.git" "owner" \
+  "ssh scheme remote with a port yields the owner, not the port"
+assert_remote_org "https://host/owner/name/" "owner" \
+  "a trailing slash does not produce an empty or slash-laden slug"
 
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "resolve-org: $FAILURES failure(s)"

@@ -45,17 +45,29 @@ slugify() {
 }
 
 remote_org() {
-  local repo="$1" url=""
+  local repo="$1" url="" rest="" owner=""
   url="$(git -C "$repo" remote get-url origin 2>/dev/null || true)"
   [[ -n "$url" ]] || return 0
-  # git@host:owner/name.git  |  https://host/owner/name(.git)
   url="${url%.git}"
-  url="${url##*:}"
-  case "$url" in
-    *//*) url="${url#*//}" && url="${url#*/}" ;;
-  esac
-  local owner="${url%%/*}"
-  [[ "$owner" != "$url" ]] || return 0
+  url="${url%/}"
+  [[ -n "$url" ]] || return 0
+
+  if [[ "$url" == *://* ]]; then
+    # scheme://[user@]host[:port]/owner/name — discard the scheme and the
+    # whole host[:port] segment, whatever it contains.
+    rest="${url#*://}"
+    [[ "$rest" == */* ]] || return 0
+    rest="${rest#*/}"
+  elif [[ "$url" == *:* ]]; then
+    # scp-like: [user@]host:owner/name
+    rest="${url#*:}"
+  else
+    return 0
+  fi
+
+  [[ "$rest" == */* ]] || return 0
+  owner="${rest%%/*}"
+  [[ -n "$owner" ]] || return 0
   slugify "$owner"
 }
 
