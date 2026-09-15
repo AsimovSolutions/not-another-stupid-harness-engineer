@@ -118,6 +118,13 @@ main() {
     esac
   done
   [[ -n "$org" ]] || die "--org is required"
+  # --org is pasted straight into a path. resolve-org only ever stores a slug,
+  # so anything else arrived another way: `acme/../globex` would rewrite
+  # another organisation's org.md, and on a case-insensitive filesystem `Acme`
+  # would reach acme's directory while stamping the wrong name into the
+  # frontmatter.
+  [[ "$org" =~ ^[a-z0-9-]+$ ]] \
+    || die "--org must be a slug of lowercase letters, digits and hyphens: $org"
 
   local org_dir="$NASHE_HOME/orgs/$org"
   local repos_dir="$org_dir/repos"

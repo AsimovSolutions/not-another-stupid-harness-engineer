@@ -105,6 +105,40 @@ else
   "$VALIDATOR" "$NASHE_HOME/orgs/acme/org.md" 2>&1 | sed 's/^/    /'
 fi
 
+# --org names a directory. resolve-org slugifies before it stores an answer,
+# so anything that is not already a slug reached promote some other way and
+# must be refused rather than followed out of the organisation's directory.
+mkdir -p "$NASHE_HOME/orgs/globex/repos"
+cp "$REPOS/billing.md" "$NASHE_HOME/orgs/globex/repos/billing.md"
+cp "$REPOS/checkout.md" "$NASHE_HOME/orgs/globex/repos/checkout.md"
+"$TOOL" --org globex
+cp "$NASHE_HOME/orgs/globex/org.md" "$TEST_ROOT/globex-before.md"
+
+assert_rejected_org() {
+  local value="$1" description="$2"
+  local output="" status=0
+  set +e
+  output="$("$TOOL" --org "$value" 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -eq 1 ]] && printf '%s' "$output" | grep -q '^error: '; then
+    pass "$description"
+  else
+    fail "$description"
+    echo "    expected exit 1 and an error: line, got $status with: $output"
+  fi
+}
+
+assert_rejected_org "acme/../globex" "a traversing organisation name is rejected"
+if diff -q "$TEST_ROOT/globex-before.md" "$NASHE_HOME/orgs/globex/org.md" >/dev/null; then
+  pass "a traversing organisation name does not rewrite another organisation's org.md"
+else
+  fail "a traversing organisation name does not rewrite another organisation's org.md"
+fi
+assert_rejected_org "../acme" "a relative organisation name is rejected"
+assert_rejected_org "/etc" "an absolute organisation name is rejected"
+assert_rejected_org "Acme" "an unslugified organisation name is rejected"
+
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "promote: $FAILURES failure(s)"
   exit 1
