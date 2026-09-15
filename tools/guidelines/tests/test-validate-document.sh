@@ -191,6 +191,36 @@ DOC
 assert_invalid "$TEST_ROOT/mixed-none.md" "none detected" \
   "a none-detected entry beside a real entry is rejected"
 
+make_document "$TEST_ROOT/double-space-dash.md" \
+  's/Gin — HTTP routing and binding\./Gin  —  HTTP routing and binding./'
+assert_invalid "$TEST_ROOT/double-space-dash.md" "em dash" \
+  "an em dash with more than one space on a side is rejected"
+
+make_document "$TEST_ROOT/no-full-stop.md" \
+  's/Gin — HTTP routing and binding\. \[observed: go.mod:6\]/Gin — HTTP routing and binding [observed: go.mod:6]/'
+assert_invalid "$TEST_ROOT/no-full-stop.md" "full stop" \
+  "a description with no closing full stop is rejected"
+
+assert_valid "$TEST_ROOT/good.md" \
+  "a lone [none detected] entry stays valid under the em dash and full stop checks"
+
+make_document "$TEST_ROOT/missing-middle.md" \
+  '/^## 8\. Testing$/,/^## 9\. Observability$/{/^## 9\. Observability$/!d;}'
+missing_middle_output="$("$TOOL" "$TEST_ROOT/missing-middle.md" 2>&1)" || true
+if printf '%s' "$missing_middle_output" | grep -Fq -- "missing section: 8. Testing"; then
+  if printf '%s' "$missing_middle_output" | grep -Fq -- "missing section: 16. Open questions"; then
+    fail "a deleted middle section is reported missing without a false claim about a present section"
+    echo "    section 16 is present in the document but was reported missing"
+    echo "    got: $missing_middle_output"
+  else
+    pass "a deleted middle section is reported missing without a false claim about a present section"
+  fi
+else
+  fail "a deleted middle section is reported missing without a false claim about a present section"
+  echo "    expected a finding mentioning: missing section: 8. Testing"
+  echo "    got: $missing_middle_output"
+fi
+
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "validate-document: $FAILURES failure(s)"
   exit 1

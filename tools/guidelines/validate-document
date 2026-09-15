@@ -56,6 +56,7 @@ main() {
     /^## / {
       heading = substr($0, 4)
       seen++
+      saw[heading] = 1
       if (seen > 16) { report(NR, "unexpected section: " heading); next }
       if (heading != want[seen]) {
         report(NR, "expected section \"" want[seen] "\", found \"" heading "\"")
@@ -109,8 +110,25 @@ main() {
         report(NR, "unrecognised marker: [" marker "]")
       }
 
-      if (entry !~ / — /) {
+      dash_ok = 1
+      if (entry !~ /—/) {
         report(NR, "entry must separate term and description with an em dash")
+        dash_ok = 0
+      } else if (entry ~ /  —/ || entry ~ /—  /) {
+        report(NR, "em dash must have exactly one space on each side")
+        dash_ok = 0
+      } else if (entry !~ / — /) {
+        report(NR, "em dash must have exactly one space on each side")
+        dash_ok = 0
+      }
+
+      if (dash_ok) {
+        match(entry, / — /)
+        description = substr(entry, RSTART + RLENGTH)
+        sub(/[ \t]*\[[^]]*\]$/, "", description)
+        if (description !~ /\.$/) {
+          report(NR, "description must end in a full stop: " description)
+        }
       }
 
       term = entry
@@ -144,7 +162,9 @@ main() {
         if (front["repository"] == "") report(1, "repository is required at repository scope")
         if (front["profile"] == "") report(1, "profile is required at repository scope")
       }
-      for (i = seen + 1; i <= 16; i++) report(0, "missing section: " want[i])
+      for (i = 1; i <= 16; i++) {
+        if (!(want[i] in saw)) report(0, "missing section: " want[i])
+      }
       if (sub_seen8 != 3) report(0, "section 8 must carry its three subsections")
       if (sub_seen9 != 3) report(0, "section 9 must carry its three subsections")
       exit (findings > 0) ? 1 : 0
