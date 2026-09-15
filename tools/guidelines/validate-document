@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+#
+# Check a generated guidelines document against the format contract in
+# method/guidelines/document-format.md.
+#
+# Usage:
+#   validate-document <file>
+#
+# Findings are printed to stderr as `<file>:<line>: <message>`.
+# Exit 0 when the document conforms, 1 when it does not.
+set -euo pipefail
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+main() {
+  local file="${1:-}"
+  [[ -n "$file" ]] || die "usage: validate-document <file>"
+  [[ -f "$file" ]] || die "not a file: $file"
+
+  awk -v FILE="$file" '
+    BEGIN {
+      split("1. Profile|2. Languages and runtimes|3. Frameworks and libraries|" \
+            "4. Architecture and layering|5. Code patterns and conventions|" \
+            "6. Data and persistence|7. External integrations|8. Testing|" \
+            "9. Observability|10. Build, packaging and runtime|11. Infrastructure|" \
+            "12. CI/CD and quality gates|13. Documentation|" \
+            "14. Security and configuration|15. Deterministic checks|" \
+            "16. Open questions", want, "|")
+      split("8.1 Unit|8.2 Integration and E2E|8.3 Mocks and fixtures", sub8, "|")
+      split("9.1 Logging|9.2 Metrics|9.3 Tracing", sub9, "|")
+      seen = 0; findings = 0; in_front = 0; front_done = 0
+    }
+
+    function report(line, message) {
+      printf "%s:%d: %s\n", FILE, line, message > "/dev/stderr"
+      findings++
+    }
+
+    NR == 1 {
+      if ($0 != "---") report(NR, "document must open with frontmatter")
+      else in_front = 1
+      next
+    }
+
+    in_front && $0 == "---" { in_front = 0; front_done = 1; next }
+
+    in_front {
+      split($0, kv, ": ")
+      front[kv[1]] = kv[2]
+      next
+    }
+
+    /^## / {
+      heading = substr($0, 4)
+      seen++
+      if (seen > 16) { report(NR, "unexpected section: " heading); next }
+      if (heading != want[seen]) {
+        report(NR, "expected section \"" want[seen] "\", found \"" heading "\"")
+      }
+      prev_term = ""; had_none = 0; had_entry = 0
+      next
+    }
+
+    /^### / {
+      heading = substr($0, 5)
+      if (heading ~ /^8\./) { sub_seen8++; expect = sub8[sub_seen8] }
+      else if (heading ~ /^9\./) { sub_seen9++; expect = sub9[sub_seen9] }
+      else { report(NR, "unexpected subsection: " heading); next }
+      if (heading != expect) {
+        report(NR, "expected subsection \"" expect "\", found \"" heading "\"")
+      }
+      prev_term = ""; had_none = 0; had_entry = 0
+      next
+    }
+
+    /^- / {
+      if (!front_done) { report(NR, "entry before frontmatter"); next }
+      entry = substr($0, 3)
+
+      if (entry == "[none detected]") {
+        had_none = 1
+        if (had_entry) report(NR, "none detected cannot sit beside another entry")
+        next
+      }
+      had_entry = 1
+      if (had_none) report(NR, "none detected cannot sit beside another entry")
+
+      if (entry !~ /\[[^]]*\]$/) {
+        report(NR, "entry has no marker: " entry)
+        next
+      }
+
+      marker = entry
+      sub(/^.*\[/, "", marker)
+      sub(/\]$/, "", marker)
+
+      if (marker ~ /^observed: /) {
+        evidence = substr(marker, 11)
+        gsub(/^[ \t]+|[ \t]+$/, "", evidence)
+        if (evidence == "") report(NR, "observed marker carries no evidence")
+      } else if (marker ~ /^observed in: /) {
+        if (front["scope"] != "organization") {
+          report(NR, "observed in: is an organisation scope marker")
+        }
+      } else if (marker != "default: backend" && marker != "default: frontend") {
+        report(NR, "unrecognised marker: [" marker "]")
+      }
+
+      if (entry !~ / — /) {
+        report(NR, "entry must separate term and description with an em dash")
+      }
+
+      term = entry
+      sub(/ — .*$/, "", term)
+      lower = tolower(term)
+      if (prev_term != "" && lower < prev_term) {
+        report(NR, "entries must be in alphabetical order: \"" term "\" after \"" prev_raw "\"")
+      }
+      prev_term = lower
+      prev_raw = term
+      next
+    }
+
+    /^# / { next }
+    /^[[:space:]]*$/ { next }
+
+    {
+      if (front_done) report(NR, "free prose is not allowed in the body: " $0)
+    }
+
+    END {
+      if (!front_done) report(1, "frontmatter is not closed")
+      if (front["nashe_guidelines_version"] != "1") {
+        report(1, "nashe_guidelines_version must be 1")
+      }
+      if (front["scope"] != "repository" && front["scope"] != "organization") {
+        report(1, "scope must be repository or organization")
+      }
+      if (front["organization"] == "") report(1, "organization is required")
+      if (front["scope"] == "repository") {
+        if (front["repository"] == "") report(1, "repository is required at repository scope")
+        if (front["profile"] == "") report(1, "profile is required at repository scope")
+      }
+      for (i = seen + 1; i <= 16; i++) report(0, "missing section: " want[i])
+      if (sub_seen8 != 3) report(0, "section 8 must carry its three subsections")
+      if (sub_seen9 != 3) report(0, "section 9 must carry its three subsections")
+      exit (findings > 0) ? 1 : 0
+    }
+  ' "$file"
+}
+
+main "$@"
