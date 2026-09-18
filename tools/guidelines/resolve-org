@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+#
+# Resolve a repository to exactly one organisation.
+#
+# Usage:
+#   resolve-org --repo <path> [--set <organisation>]
+#
+# Prints `org=<slug>` and `source=stored|signals|set` on success.
+# Prints `status=undecided` with the observed signals and exits 3 when the
+# caller has to ask.
+set -euo pipefail
+
+NASHE_HOME="${NASHE_HOME:-$HOME/.claude/nashe}"
+MAP_FILE="$NASHE_HOME/repos.json"
+
+TMP_MAP=""
+cleanup() { [[ -z "$TMP_MAP" ]] || rm -f "$TMP_MAP"; }
+trap cleanup EXIT
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+require_tool() {
+  command -v "$1" >/dev/null 2>&1 || die "required tool '$1' is not on PATH"
+}
+
+# The physical absolute path of the repository. Everything that touches the
+# map goes through this: the map is keyed by the directory itself, not by the
+# string the caller typed. Keying on the raw argument files two different
+# repositories under the same key whenever both are resolved as `.`, which
+# silently hands one organisation's conventions to another.
+canonical_path() {
+  local repo="$1"
+  # Unsetting CDPATH is the part that matters: with it set, `cd` resolves a
+  # relative argument against those directories instead of the current one, so
+  # the wrong repository gets canonicalised. Silencing the path `cd` prints is
+  # not enough — by then the jump has already happened. -P resolves symlinks;
+  # -- stops a leading dash being read as an option.
+  (
+    unset CDPATH
+    cd -P -- "$repo" && pwd -P
+  )
+}
+
+# jq exits non-zero on a malformed map. Report it in this tool's own style
+# rather than letting jq's diagnostics out through an undocumented exit code.
+require_readable_map() {
+  [[ -f "$MAP_FILE" ]] || return 0
+  jq -e 'type == "object"' "$MAP_FILE" >/dev/null 2>&1 \
+    || die "malformed repository map: $MAP_FILE"
+}
+
+read_stored() {
+  local path="$1"
+  [[ -f "$MAP_FILE" ]] || return 0
+  require_readable_map
+  jq -r --arg p "$path" '.repositories[$p] // empty' "$MAP_FILE"
+}
+
+write_stored() {
+  local path="$1" org="$2"
+  mkdir -p "$NASHE_HOME"
+  [[ -f "$MAP_FILE" ]] || printf '{"repositories":{}}\n' >"$MAP_FILE"
+  require_readable_map
+  # TMP_MAP is global so the EXIT trap removes it on any failure path; a
+  # failing jq under `set -e` otherwise leaves one behind on every attempt.
+  TMP_MAP="$(mktemp "$NASHE_HOME/.repos.json.XXXXXX")"
+  jq --arg p "$path" --arg o "$org" \
+    '.repositories[$p] = $o' "$MAP_FILE" >"$TMP_MAP" \
+    || die "could not update the repository map: $MAP_FILE"
+  mv "$TMP_MAP" "$MAP_FILE"
+  TMP_MAP=""
+}
+
+slugify() {
+  local value="$1"
+  value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  printf '%s' "$value" | sed 's/[^a-z0-9-]/-/g'
+}
+
+remote_org() {
+  local repo="$1" url="" rest="" owner=""
+  url="$(git -C "$repo" remote get-url origin 2>/dev/null || true)"
+  [[ -n "$url" ]] || return 0
+  url="${url%.git}"
+  url="${url%/}"
+  [[ -n "$url" ]] || return 0
+
+  if [[ "$url" == *://* ]]; then
+    # scheme://[user@]host[:port]/owner/name — discard the scheme and the
+    # whole host[:port] segment, whatever it contains.
+    rest="${url#*://}"
+    [[ "$rest" == */* ]] || return 0
+    rest="${rest#*/}"
+  elif [[ "$url" == *:* ]]; then
+    # scp-like: [user@]host:owner/name
+    rest="${url#*:}"
+  else
+    return 0
+  fi
+
+  [[ "$rest" == */* ]] || return 0
+  owner="${rest%%/*}"
+  [[ -n "$owner" ]] || return 0
+  slugify "$owner"
+}
+
+path_org() {
+  local repo="$1" parent=""
+  parent="$(dirname "$repo")"
+  [[ "$parent" != "/" && "$parent" != "$HOME" ]] || return 0
+  slugify "$(basename "$parent")"
+}
+
+main() {
+  local repo="" set_org=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        repo="${2:-}"
+        shift 2
+        ;;
+      --set)
+        set_org="${2:-}"
+        shift 2
+        ;;
+      *) die "unknown option: $1" ;;
+    esac
+  done
+
+  [[ -n "$repo" ]] || die "--repo is required"
+  [[ -d "$repo" ]] || die "not a directory: $repo"
+
+  require_tool jq
+
+  # Everything below works on the canonical path, so `.`, a relative path, a
+  # trailing slash, a symlink and the absolute path of one repository are one
+  # key, and two repositories are never the same key.
+  repo="$(canonical_path "$repo")" || die "cannot resolve path: $repo"
+  [[ -n "$repo" ]] || die "cannot resolve path: $repo"
+
+  if [[ -n "$set_org" ]]; then
+    local slug
+    slug="$(slugify "$set_org")"
+    [[ -n "$slug" ]] || die "--set value is empty after normalisation"
+    write_stored "$repo" "$slug"
+    echo "org=$slug"
+    echo "source=set"
+    return 0
+  fi
+
+  local stored
+  stored="$(read_stored "$repo")"
+  if [[ -n "$stored" ]]; then
+    echo "org=$stored"
+    echo "source=stored"
+    return 0
+  fi
+
+  local from_remote from_path
+  from_remote="$(remote_org "$repo")"
+  from_path="$(path_org "$repo")"
+
+  if [[ -n "$from_remote" && "$from_remote" == "$from_path" ]]; then
+    echo "org=$from_remote"
+    echo "source=signals"
+    return 0
+  fi
+
+  echo "status=undecided"
+  echo "remote_org=$from_remote"
+  echo "path_org=$from_path"
+  return 3
+}
+
+main "$@"

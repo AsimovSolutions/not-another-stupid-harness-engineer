@@ -59,6 +59,15 @@ These hold for every task, in every skill. They are not negotiable and they are 
 
 **Documents.** Specs and plans go to `docs/specs/` and `docs/plans/`. Whether those files are tracked in git is your human partner's call, asked once per repository — see `skills/using-nashe/references/document-publishing.md` before writing the first one.
 
+**Guidelines.** Before the first technical decision in a repository, load
+`${NASHE_HOME:-$HOME/.claude/nashe}/orgs/<organisation>/` if it exists — the organisation
+document and this repository's overlay. They rank second in the research order, after the
+codebase and its history and before product documentation: an ambiguity whose answer is an
+`[observed: …]` entry is resolved there and not escalated. An entry marked `[none detected]`
+is a known gap, not permission to choose — apply the profile default if one exists, otherwise
+escalate. Where no document exists, suggest `nashe:get-guidelines` once; never invent the
+conventions.
+
 **Finishing.** Work ends with a pull request or with the branch left alone. NASHE never merges to main for you.
 
 ## User Instructions
